@@ -1,0 +1,175 @@
+---
+title: "Lab 7 and 8. ESM 296 Advanced Fsheries Models "
+author: "Edaysi Bucio Bustos"
+date: "June 2018"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Install packages
+```{r Packages, include = FALSE}
+
+library(tidyverse)
+library(knitr)
+library(rmarkdown)
+library(latexpdf)
+
+
+```
+
+################# Lab 7 ###########################################################################################
+Part 1: check the code for a harvest vector
+```{r Harvest_vector}
+#Note: If MPA.width=0, 
+#If , ncells=5, and MPA.width=3
+#If , ncells=4, and MPA.width=1
+calc.harvest.vec <- function(u.out, ncells, MPA.width)  {
+   u.vec <- vector(length=ncells)
+   u.vec[] <- u.out        
+   if (MPA.width > 0) {  
+      MPA.begin <- round((ncells-MPA.width)/2)+1  
+      MPA.end <- MPA.begin + MPA.width -1         
+      u.vec[MPA.begin:MPA.end] <- 0        
+   }
+   return(u.vec)
+
+#To do:Make sure you are satisfied that the function works as promised
+calc.harvest.vec(u.out=0.1, ncells=2, MPA.width=0) #Making sure the code is running 
+calc.harvest.vec(u.out=0.1, ncells=4, MPA.width=1)
+calc.harvest.vec(u.out=0.1, ncells=5, MPA.width=3)
+
+```
+
+Part 2: MPA Model
+```{r MPA_model}
+#To consider: nsteps=1, ncells=4, MPA.width=1
+#Set every cell in vector pop equal to K.
+
+
+MPA.model <- function(r, K, u.out, ncells, nsteps, 
+                      MPA.width, mrate) {
+
+   u.vec <- calc.harvest.vec(u.out=u.out, ncells=ncells, 
+                             MPA.width=MPA.width) #Setting the harvest rate per cell (Remember that cells variate)
+   pop <- vector(length=ncells) 
+   
+   pop[] <- K #Pop = K (carrying capacity)
+   print(pop) #Not printing
+   
+#Relevant for the code: movement to the right will be to cells c(2:ncells,1),  while movement to the left will be to cells c(ncells,1:(ncells-1)).  
+   
+   left.cells <- c(ncells,1:(ncells-1))
+   right.cells <- c(2:ncells,1)
+   print(left.cells)
+   print(right.cells)
+   
+#Include my initial numbers. In this part of the code I'm going to loop, within the loop leavinh[] refers to the nunmber of fish leaving each cell
+   
+   plot(x=1:ncells, y=pop, xlab="Cells", lwd=3,
+        ylab="Population size", ylim=c(0, 1.05*max(pop)), type="l", yaxs="i", xaxs="i") #Here I change lwd value ust for review changes in the graph
+   
+   for (i in 1:nsteps) {
+
+      leaving <- 2*mrate*pop
+      
+      arriving <- 0.5*leaving[left.cells]+0.5*leaving[right.cells]
+      
+      surplus.prod <- r*pop*(1-pop/K) #Production benefits. Hard code
+      
+      catches <- u.vec*pop #Makes sense to estimate catches by  considering haervest rate per cell and pop size 
+      
+      pop <- pop + surplus.prod - leaving + arriving - catches
+      
+      lines(x=1:ncells, y=pop, lwd=(nsteps-i+1)/nsteps*2)
+   }
+}
+MPA.model(r=0.2, K=1000, u.out=0.4, ncells=21, MPA.width=5, nsteps=10, mrate=0.2) #From the PDF instructions
+
+#Having problems to read catches.
+
+```
+
+Part 3: calculating long - term equilibrium catch
+```{r Equilibrium_catch}
+
+#To consider: Make a copy of MPA.model() and rename it MPA.eqm.catch().
+
+MPA.eqm.catch <- function(r, K, u.out, ncells, nsteps, MPA.width, mrate) {
+   u.vec <- calc.harvest.vec(u.out=u.out, ncells=ncells, MPA.width=MPA.width)
+   pop <- vector(length=ncells)
+   pop[] <- K   #Pop = K (carrying capacity)
+   
+#According to the PDF instructions: movement to the right will be to cells c(2:ncells,1),  while movement to the left will be to cells c(ncells,1:(ncells-1)). 
+   left.cells <- c(ncells,1:(ncells-1)) #Same as the last chunk
+   right.cells <- c(2:ncells,1)
+   
+   for (i in 1:nsteps) {
+     
+      leaving <- 2*mrate*pop
+      
+      arriving <- 0.5*leaving[left.cells]+0.5*leaving[right.cells]
+      
+      surplus.prod <- r*pop*(1-pop/K)
+      
+      catches <- u.vec*pop
+      
+      pop <- pop + surplus.prod - leaving + 
+             arriving - catches
+      
+   }
+   return(sum(catches))
+}
+MPA.eqm.catch(r=0.2, K=1000, u.out=0.4, ncells=21, MPA.width=5, nsteps=1000, mrate=0.2)
+
+#Personal notes: In this part we are interested in know catches over a long time period. That's why we set the number of time periods to 1,000. Same code as part 3.
+```
+
+Part 4:  Equilibrium yield by harvest rate and reserve size
+```{r Equilibrium_yield}
+#To calculate equilibrium yield:
+#Use the function contour.width.harvest(), equilibrium yield = MPA.eqm.catch().
+#Create a vector MPA.widths[] containing a series of values of MPA.width values (e.g.0:100)
+#Create a vector harvest[] of harvest rates ranging from 0 to 0.5.
+
+contour.width.harvest <- function(r=0.2, K=1000, ncells=100, 
+                                  nsteps=1000, mrate=0.2) {
+    MPA.widths <- seq(0,ncells,by=1)  
+    harvest <- seq(0,0.5,length.out=100)
+    
+   catch.mat <- matrix(NA, nrow=length(harvest), #Storing catches
+                        ncol=length(MPA.widths))
+    
+      for (i in 1:length(harvest)) {
+       for (j in 1:length(MPA.widths)) {
+           catch.mat[i,j] <- MPA.eqm.catch(r=r, K=K, 
+                                           u.out=harvest[i], 
+                  ncells=ncells, MPA.width=MPA.widths[j], 
+                  nsteps=nsteps, mrate=mrate)
+           print(paste(i,j))
+       }
+    }
+    contour(x=harvest, y=MPA.widths, z=catch.mat,
+            xlab="Harvest rate",  ylab="MPA width", 
+            xaxs="i",yaxs="i", levels=c(100,200,300, 500,
+                                        seq(1000,5000,500)))
+    return(catch.mat)
+}
+
+#Note: I had problems getting the plot for total catches by MPA
+pdf("Figures//newfig.pdf",width=8, height=5)
+x <- contour.width.harvest(r=0.2, K=1000, ncells=100, 
+                           nsteps=100, mrate=0.1) 
+dev.off()
+
+x <- contour.width.harvest(r=0.2, K=1000, ncells=100, nsteps=100, mrate=0.05) 
+
+x <- contour.width.harvest(r=0.5, K=1000, ncells=100, nsteps=100, mrate=0.1) #Value of r increase
+
+
+```
